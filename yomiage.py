@@ -7,6 +7,7 @@ from io import BytesIO
 import re
 from typing import Optional
 import os
+import asyncio  # 修正点1: asyncioをインポート
 
 TOKEN = 'token'
 
@@ -123,8 +124,9 @@ class MyClient(discord.Client):
             guild_id_str = str(message.guild.id)
             settings = guild_settings.get(guild_id_str, DEFAULT_SETTINGS)
 
+            # 修正点2: 再生が終わるまで0.1秒ずつ待機する
             while voice_client.is_playing():
-                await discord.utils.sleep_until(lambda: not voice_client.is_playing())
+                await asyncio.sleep(0.1)
 
             audio_data = talk(
                 processed_text,
@@ -164,7 +166,7 @@ async def join(interaction: discord.Interaction):
 @client.tree.command(name="leave", description="Botがボイスチャンネルから切断します。")
 async def leave(interaction: discord.Interaction):
     if interaction.guild.voice_client is None:
-        await interaction.response.send_message("Botはどのボイスチャンネルにも接続していません。", ephemeral=True)
+        await interaction.response.send_message("Botはどのボイスチャンネルにも接続していません。", ephemeral=False)
         return
 
     await interaction.guild.voice_client.disconnect()
@@ -220,7 +222,7 @@ async def jisyo_add(interaction: discord.Interaction, word: str, reading: str):
         
     guild_dictionaries[guild_id_str][word] = reading
     save_dictionary()
-    await interaction.response.send_message(f"✅ 単語「`{word}`」を「`{reading}`」として登録しました。", ephemeral=True)
+    await interaction.response.send_message(f"✅ 単語「`{word}`」を「`{reading}`」として登録しました。", ephemeral=False)
 
 @jisyo_group.command(name="remove", description="辞書から単語を削除します。")
 @app_commands.rename(word="単語")
@@ -229,9 +231,9 @@ async def jisyo_remove(interaction: discord.Interaction, word: str):
     if guild_id_str in guild_dictionaries and word in guild_dictionaries[guild_id_str]:
         del guild_dictionaries[guild_id_str][word]
         save_dictionary()
-        await interaction.response.send_message(f"🗑️ 単語「`{word}`」を辞書から削除しました。", ephemeral=True)
+        await interaction.response.send_message(f"🗑️ 単語「`{word}`」を辞書から削除しました。", ephemeral=False)
     else:
-        await interaction.response.send_message(f"🤔 単語「`{word}`」は辞書に登録されていません。", ephemeral=True)
+        await interaction.response.send_message(f"🤔 単語「`{word}`」は辞書に登録されていません。", ephemeral=False)
 
 @jisyo_group.command(name="list", description="登録されている単語のリストを表示します。")
 async def jisyo_list(interaction: discord.Interaction):
@@ -242,9 +244,9 @@ async def jisyo_list(interaction: discord.Interaction):
         for word, reading in guild_dictionaries[guild_id_str].items():
             description += f"**{word}** → **{reading}**\n"
         embed.description = description
-        await interaction.response.send_message(embed=embed, ephemeral=True)
+        await interaction.response.send_message(embed=embed, ephemeral=False)
     else:
-        await interaction.response.send_message("辞書にはまだ何も登録されていません。", ephemeral=True)
+        await interaction.response.send_message("辞書にはまだ何も登録されていません。", ephemeral=False)
 
 client.tree.add_command(jisyo_group)
 
