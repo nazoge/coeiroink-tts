@@ -90,7 +90,12 @@ def process_message(text: str, guild_id: int) -> str:
     if guild_id_str in guild_dictionaries:
         for word, reading in guild_dictionaries[guild_id_str].items():
             text = text.replace(word, reading)
-            
+
+    text = text.replace('?', '。')
+    text = text.replace('？', '。')
+    text = text.replace('!', '。')
+    text = text.replace('！', '。')
+    
     url_pattern = r'https?://\S+|www\.\S+'
     if re.fullmatch(url_pattern, text.strip()):
         return 'リンク省略'
@@ -124,7 +129,6 @@ class MyClient(discord.Client):
             guild_id_str = str(message.guild.id)
             settings = guild_settings.get(guild_id_str, DEFAULT_SETTINGS)
 
-            # 修正点2: 再生が終わるまで0.1秒ずつ待機する
             while voice_client.is_playing():
                 await asyncio.sleep(0.1)
 
@@ -146,13 +150,13 @@ client = MyClient(intents=intents)
 @client.tree.command(name="join", description="Botがあなたが参加しているボイスチャンネルに接続します。")
 async def join(interaction: discord.Interaction):
     if interaction.user.voice is None:
-        await interaction.response.send_message("先にボイスチャンネルに参加してください。", ephemeral=True)
+        await interaction.response.send_message("先にボイスチャンネルに参加してください。", ephemeral=False)
         return
 
     if interaction.guild.voice_client is not None:
         await interaction.response.send_message(
             f"Botは既に `{interaction.guild.voice_client.channel.name}` で使用されています。先に `/leave` で退出させてください。",
-            ephemeral=True
+            ephemeral=False
         )
         return
 
@@ -263,3 +267,4 @@ async def auto_leave():
 
 if __name__ == "__main__":
     client.run(TOKEN)
+
