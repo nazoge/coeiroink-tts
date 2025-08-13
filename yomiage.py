@@ -7,7 +7,7 @@ from io import BytesIO
 import re
 from typing import Optional
 import os
-import asyncio  # 修正点1: asyncioをインポート
+import asyncio
 
 TOKEN = 'token'
 
@@ -18,6 +18,7 @@ intents.members = True
 
 guild_settings = {}
 guild_dictionaries = {}
+guild_text_channels = {}
 
 DEFAULT_SETTINGS = {
     "speed": 1.0,
@@ -77,14 +78,14 @@ def talk(text: str, speed: float, pitch: float, intonation: float) -> Optional[B
             "http://127.0.0.1:2080/v1/synthesis",
             headers={"Content-Type": "application/json"},
             data=json.dumps(query),
-            timeout=10
+            timeout=30
         )
         response.raise_for_status()
         return BytesIO(response.content)
     except requests.exceptions.RequestException as e:
         print(f"音声合成APIへの接続に失敗しました: {e}")
         return None
-
+    
 def process_message(text: str, guild_id: int) -> str:
     guild_id_str = str(guild_id)
     if guild_id_str in guild_dictionaries:
@@ -95,7 +96,7 @@ def process_message(text: str, guild_id: int) -> str:
     text = text.replace('？', '。')
     text = text.replace('!', '。')
     text = text.replace('！', '。')
-    
+
     url_pattern = r'https?://\S+|www\.\S+'
     if re.fullmatch(url_pattern, text.strip()):
         return 'リンク省略'
@@ -119,6 +120,10 @@ class MyClient(discord.Client):
 
         voice_client = message.guild.voice_client
         if voice_client and voice_client.is_connected():
+            active_channel_id = guild_text_channels.get(message.guild.id)
+            if active_channel_id != message.channel.id:
+                return
+
             if not message.content.strip():
                 return
             
@@ -150,20 +155,21 @@ client = MyClient(intents=intents)
 @client.tree.command(name="join", description="Botがあなたが参加しているボイスチャンネルに接続します。")
 async def join(interaction: discord.Interaction):
     if interaction.user.voice is None:
-        await interaction.response.send_message("先にボイスチャンネルに参加してください。", ephemeral=False)
+        await interaction.response.send_message("先にボイスチャンネルに参加してください。", ephemeral=True)
         return
 
     if interaction.guild.voice_client is not None:
         await interaction.response.send_message(
             f"Botは既に `{interaction.guild.voice_client.channel.name}` で使用されています。先に `/leave` で退出させてください。",
-            ephemeral=False
+            ephemeral=True
         )
         return
 
     voice_channel = interaction.user.voice.channel
     try:
         await voice_channel.connect()
-        await interaction.response.send_message(f"`{voice_channel.name}` に接続しました！", ephemeral=False)
+        guild_text_channels[interaction.guild.id] = interaction.channel.id
+        await interaction.response.send_message(f"`{voice_channel.name}` に接続しました！\nこのチャンネルのメッセージを読み上げます。", ephemeral=False)
     except Exception as e:
         await interaction.response.send_message(f"接続に失敗しました: {e}", ephemeral=True)
 
@@ -172,6 +178,9 @@ async def leave(interaction: discord.Interaction):
     if interaction.guild.voice_client is None:
         await interaction.response.send_message("Botはどのボイスチャンネルにも接続していません。", ephemeral=False)
         return
+    
+    if interaction.guild.id in guild_text_channels:
+        del guild_text_channels[interaction.guild.id]
 
     await interaction.guild.voice_client.disconnect()
     await interaction.response.send_message("ボイスチャンネルから切断しました。", ephemeral=False)
@@ -262,9 +271,10 @@ async def auto_leave():
             members = voice_client.channel.members
             non_bot_members = [m for m in members if not m.bot]
             if not non_bot_members:
+                if guild.id in guild_text_channels:
+                    del guild_text_channels[guild.id]
                 await voice_client.disconnect()
                 print(f"{guild.name}のボイスチャンネルから自動退出しました。")
 
 if __name__ == "__main__":
     client.run(TOKEN)
-
